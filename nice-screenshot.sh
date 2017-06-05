@@ -135,11 +135,11 @@ elif [[ "$color" != 'none'
   # If no north west border, use south east color
   if [[ $south_border == 1
      || $east_border  == 1  ]]; then
-      read w h <<<$(echo "$wh")
-      # Store bottom right pixel color
-      se_color=$(identify -format "%[pixel: u.p{$(($w-1)),$(($h-1))}]" "$@")
-      # Bottom right pixel color applies to South and East sides
-      se_args="-background ${se_color} $se_args"
+    read w h <<<$(echo "$wh")
+    # Store bottom right pixel color
+    se_color=$(identify -format "%[pixel: u.p{$(($w-1)),$(($h-1))}]" "$@")
+    # Bottom right pixel color applies to South and East sides
+    se_args="-background ${se_color} $se_args"
   fi
 
   # Trim the image and frame each side individaully
@@ -166,12 +166,12 @@ elif [[ "$color" != 'none'
     rows=( $tmp/rows_*.mpc )
     if [[ $north_border == 0 ]]; then
       north_count=$(count_identical_pixels "${rows[*]}")
-      north_count=$(( frame_width - north_count ))
+      north_count=$(( north_count - frame_width ))
     fi
     if [[ $south_border == 0 ]]; then
       rev_rows=( $(printf '%s\n' "${rows[@]}" | tail -r) )
       south_count=$(count_identical_pixels "${rev_rows[*]}")
-      south_count=$(( frame_width - south_count ))
+      south_count=$(( south_count - frame_width ))
     fi
   fi
 
@@ -188,44 +188,29 @@ elif [[ "$color" != 'none'
     cols=( $tmp/cols_*.mpc )
     if [[ $west_border == 0 ]]; then
       west_count=$(count_identical_pixels "${cols[*]}")
-      west_count=$(( frame_width - west_count ))
+      west_count=$(( west_count - frame_width ))
     fi
     if [[ $east_border == 0 ]]; then
       rev_cols=( $(printf '%s\n' "${cols[@]}" | tail -r) )
       east_count=$(count_identical_pixels "${rev_cols[*]}")
-      east_count=$(( frame_width - east_count ))
+      east_count=$(( east_count - frame_width ))
     fi
   fi
 
-  # Store the width and height of the image
-  wh=$(identify -format '%w %h' "$@")
-  read w h <<<$(echo "$wh")
+  # Generate chop string
+  chop_args=''
+  [[ $north_count > 0 ]] && chop_args="$chop_args -gravity north -chop 0x${north_count}"
+  [[ $south_count > 0 ]] && chop_args="$chop_args -gravity south -chop 0x${south_count}"
+  [[  $east_count > 0 ]] && chop_args="$chop_args -gravity east  -chop ${east_count}x0"
+  [[  $west_count > 0 ]] && chop_args="$chop_args -gravity west  -chop ${west_count}x0"
 
-  # Calculate final width and height
-  final_width=$(( w + east_count + west_count ))
-  final_height=$(( h + north_count + south_count ))
-
-  # Chop/extend sides as needed
-  if [[ $w != $final_width || $h != $final_height ]]; then
-    # Generate crop string with offsets
-    dimensions="${final_width}x${final_height}-$(( west_count ))-$(( north_count ))"
-
-    # Alternatively use "chop" to remove a single side
-    # e.g. chop_args="$chop_args -gravity North -chop 0x${chop}"
-    mogrify \
-      -set option:distort:viewport $dimensions \
-      -virtual-pixel Edge -distort SRT 0 \
-      "$@"
-  fi
+  # Chop sides as needed
+  mogrify $chop_args "$@"
 
   # Clean up temporary files
   rm -f $tmp/cols_*.mpc $tmp/cols_*.cache
   rm -rf $tmp
 fi
-
-# Optimize image
-# This strips dpi metadata
-# image_optim --skip-missing-workers "$@"
 
 # Reset dpi
 #if [ $dpi -eq 144 ]; then
