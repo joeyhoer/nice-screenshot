@@ -4,6 +4,9 @@ PROGNAME="$0"                          # search for executable on path
 PROGDIR=`dirname $PROGNAME`            # extract directory of program
 PROGNAME=`basename $PROGNAME`          # base name of program
 frame_width="20"
+# Color threshold defines how many unique colors are needed to qualify an image
+# as a photograph
+color_threshold=16000
 
 # Determine if a side of an image is trimmable
 # Return "0" if the side can be trimmed
@@ -81,8 +84,9 @@ if [ $dpi -eq 144 ]; then
   #sips --resampleWidth "$width" "$@"
 fi
 
-# Store the width and height of the image
-wh=$(identify -format '%w %h' "$@")
+# Store image information
+read mime color_count nw_color w h <<<$(identify -format '%m %k %[pixel: u.p{0,0}] %w %h' "$@")
+wh="$w $h"
 
 # Determine which sides of the image are solid borders which can be trimmed
 north_border=$(test_trim North "$wh" "$@")
@@ -107,24 +111,21 @@ elif [[
   any_border=1
 fi
 
-# Store top left pixel color
-color=$(identify -format "%[pixel: u.p{0,0}]" "$@")
-
 # Unify border width (if the border is not transparent)
-if [[ "$color" != 'none'
+if [[ "$nw_color" != 'none'
    && "$full_border" == 1 ]]; then
   # Trim the image and add a uniform frame
   # Note: -mattecolor may be interchangeable with -alpha-color
   mogrify \
-    -mattecolor "${color}" \
+    -mattecolor "${nw_color}" \
     -trim +repage \
     -frame "$frame_width" \
     "$@"
-elif [[ "$color" != 'none'
+elif [[ "$nw_color" != 'none'
      && "$any_border" == 1 ]]; then
 
   # Top left pixel color applies to North and West sides
-  nw_args="-background ${color}"
+  nw_args="-background ${nw_color}"
 
   # Generate arguments for each side
   [[ $north_border == 1 ]] && nw_args="$nw_args -gravity north -splice x${frame_width}"
@@ -135,7 +136,6 @@ elif [[ "$color" != 'none'
   # If no north west border, use south east color
   if [[ $south_border == 1
      || $east_border  == 1  ]]; then
-    read w h <<<$(echo "$wh")
     # Store bottom right pixel color
     se_color=$(identify -format "%[pixel: u.p{$(($w-1)),$(($h-1))}]" "$@")
     # Bottom right pixel color applies to South and East sides
@@ -210,6 +210,12 @@ elif [[ "$color" != 'none'
   # Clean up temporary files
   rm -f $tmp/cols_*.mpc $tmp/cols_*.cache
   rm -rf $tmp
+fi
+
+# Convert to JPEG, if necessary
+if   [[ $mime == 'PNG' ]]  \
+  && (( $color_count > $color_threshold )); then
+  mogrify -format jpg "$@" && rm "$@"
 fi
 
 # Reset dpi
