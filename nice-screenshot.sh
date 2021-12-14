@@ -62,7 +62,7 @@ info=$(sips -g dpiWidth -g pixelWidth "$@")
 dpi=$(echo "$info" | awk '$1 ~ /dpiWidth/ { print $2/1 }')
 width=$(echo "$info" | awk '$1 ~ /pixelWidth/ { print $2/2 }')
 
-# Reduce DPI
+# Reduce DPI before processing the image to improve speed
 if [ $dpi -eq 144 ]; then
   # When reducing an image:
   #   -scale  == -resize box, but faster
@@ -85,7 +85,7 @@ if [ $dpi -eq 144 ]; then
 fi
 
 # Store image information
-read mime color_count nw_color w h <<<$(identify -format '%m %k %[pixel: u.p{0,0}] %w %h' "$@")
+read mime color_count opaque nw_color w h <<<$(identify -format '%m %k %[opaque] %[pixel: u.p{0,0}] %w %h' "$@")
 wh="$w $h"
 
 # Determine which sides of the image are solid borders which can be trimmed
@@ -214,7 +214,8 @@ fi
 
 # Convert to JPEG, if necessary
 if   [[ $mime == 'PNG' ]]  \
-  && (( $color_count > $color_threshold )); then
+  && (( $color_count > $color_threshold )) \
+  && [[ $opaque == 'True' ]]; then
   mogrify -format jpg "$@" && rm "$@"
 fi
 
